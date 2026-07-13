@@ -218,6 +218,7 @@ class STORMWikiRunner(Engine):
             conversation_log,
         ) = self.storm_knowledge_curation_module.research(
             topic=self.topic,
+            context=self.context,
             ground_truth_url=ground_truth_url,
             callback_handler=callback_handler,
             max_perspective=self.args.max_perspective,
@@ -241,6 +242,7 @@ class STORMWikiRunner(Engine):
     ) -> StormArticle:
         outline, draft_outline = self.storm_outline_generation_module.generate_outline(
             topic=self.topic,
+            context=self.context,
             information_table=information_table,
             return_draft_outline=True,
             callback_handler=callback_handler,
@@ -261,6 +263,7 @@ class STORMWikiRunner(Engine):
     ) -> StormArticle:
         draft_article = self.storm_article_generation.generate_article(
             topic=self.topic,
+            context=self.context,
             information_table=information_table,
             article_with_outline=outline,
             callback_handler=callback_handler,
@@ -341,6 +344,7 @@ class STORMWikiRunner(Engine):
     def run(
         self,
         topic: str,
+        context: str = "",
         ground_truth_url: str = "",
         do_research: bool = True,
         do_generate_outline: bool = True,
@@ -376,6 +380,7 @@ class STORMWikiRunner(Engine):
         )
 
         self.topic = topic
+        self.context = context.strip() if context and context.strip() else "N/A"
         self.article_dir_name = truncate_filename(
             topic.replace(" ", "_").replace("/", "_")
         )

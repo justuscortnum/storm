@@ -54,7 +54,7 @@ class FindRelatedTopic(dspy.Signature):
 
 
 class GenPersona(dspy.Signature):
-    """You need to select a group of Wikipedia editors who will work together to create a comprehensive article on the topic. Each of them represents a different perspective, role, or affiliation related to this topic. You can use other Wikipedia pages of related topics for inspiration. For each editor, add a description of what they will focus on.
+    """You need to select a group of Wikipedia editors who will work together to create a comprehensive article on the topic. Each of them represents a different perspective, role, or affiliation related to this topic. You can use other Wikipedia pages of related topics for inspiration. For each editor, add a description of what they will focus on. If additional focus or instructions from the user are provided (and not 'N/A'), make sure the chosen editors and their focus reflect those instructions.
     Give your answer in the following format: 1. short summary of editor 1: description\n2. short summary of editor 2: description\n...
     """
 
@@ -62,6 +62,7 @@ class GenPersona(dspy.Signature):
     examples = dspy.InputField(
         prefix="Wiki page outlines of related topics for inspiration:\n", format=str
     )
+    context = dspy.InputField(prefix="Additional focus / instructions from the user (may be 'N/A'): ", format=str)
     personas = dspy.OutputField(format=str)
 
 
@@ -74,7 +75,7 @@ class CreateWriterWithPersona(dspy.Module):
         self.gen_persona = dspy.ChainOfThought(GenPersona)
         self.engine = engine
 
-    def forward(self, topic: str, draft=None):
+    def forward(self, topic: str, draft=None, context: str = ""):
         with dspy.settings.context(lm=self.engine):
             # Get section names from wiki pages of relevant topics for inspiration.
             related_topics = self.find_related_topic(topic=topic).related_topics
@@ -93,7 +94,7 @@ class CreateWriterWithPersona(dspy.Module):
             if len(examples) == 0:
                 examples.append("N/A")
             gen_persona_output = self.gen_persona(
-                topic=topic, examples="\n----------\n".join(examples)
+                topic=topic, examples="\n----------\n".join(examples), context=context
             ).personas
 
         personas = []
@@ -131,7 +132,7 @@ class StormPersonaGenerator:
     def __init__(self, engine: Union[dspy.dsp.LM, dspy.dsp.HFModel]):
         self.create_writer_with_persona = CreateWriterWithPersona(engine=engine)
 
-    def generate_persona(self, topic: str, max_num_persona: int = 3) -> List[str]:
+    def generate_persona(self, topic: str, max_num_persona: int = 3, context: str = "") -> List[str]:
         """
         Generates a list of personas based on the provided topic, up to a maximum number specified.
 
@@ -148,7 +149,7 @@ class StormPersonaGenerator:
             List[str]: A list of persona descriptions, including the default 'Basic fact writer' persona
                 and up to `max_num_persona` additional personas generated based on the topic.
         """
-        personas = self.create_writer_with_persona(topic=topic)
+        personas = self.create_writer_with_persona(topic=topic, context=context)
         default_persona = "Basic fact writer: Basic fact writer focusing on broadly covering the basic facts about the topic."
         considered_personas = [default_persona] + personas.personas[:max_num_persona]
         return considered_personas

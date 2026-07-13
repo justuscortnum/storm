@@ -22,7 +22,8 @@ class StormOutlineGenerationModule(OutlineGenerationModule):
     def generate_outline(
         self,
         topic: str,
-        information_table: StormInformationTable,
+        context: str = "",
+        information_table: StormInformationTable = None,
         old_outline: Optional[StormArticle] = None,
         callback_handler: BaseCallbackHandler = None,
         return_draft_outline=False,
@@ -60,6 +61,7 @@ class StormOutlineGenerationModule(OutlineGenerationModule):
             topic=topic,
             dlg_history=concatenated_dialogue_turns,
             callback_handler=callback_handler,
+            context=context,
         )
         article_with_outline_only = StormArticle.from_outline_str(
             topic=topic, outline_str=result.outline
@@ -87,6 +89,7 @@ class WriteOutline(dspy.Module):
         dlg_history,
         old_outline: Optional[str] = None,
         callback_handler: BaseCallbackHandler = None,
+        context: str = "",
     ):
         trimmed_dlg_history = []
         for turn in dlg_history:
@@ -108,7 +111,7 @@ class WriteOutline(dspy.Module):
         with dspy.settings.context(lm=self.engine):
             if old_outline is None:
                 old_outline = ArticleTextProcessing.clean_up_outline(
-                    self.draft_page_outline(topic=topic).outline
+                    self.draft_page_outline(topic=topic, context=context).outline
                 )
                 if callback_handler:
                     callback_handler.on_direct_outline_generation_end(
@@ -116,7 +119,7 @@ class WriteOutline(dspy.Module):
                     )
             outline = ArticleTextProcessing.clean_up_outline(
                 self.write_page_outline(
-                    topic=topic, old_outline=old_outline, conv=conv
+                    topic=topic, old_outline=old_outline, conv=conv, context=context
                 ).outline
             )
             if callback_handler:
@@ -134,6 +137,7 @@ class WritePageOutline(dspy.Signature):
     """
 
     topic = dspy.InputField(prefix="The topic you want to write: ", format=str)
+    context = dspy.InputField(prefix="Additional focus / instructions from the user (may be 'N/A'): ", format=str)
     outline = dspy.OutputField(prefix="Write the Wikipedia page outline:\n", format=str)
 
 
@@ -144,8 +148,8 @@ class NaiveOutlineGen(dspy.Module):
         super().__init__()
         self.write_outline = dspy.Predict(WritePageOutline)
 
-    def forward(self, topic: str):
-        outline = self.write_outline(topic=topic).outline
+    def forward(self, topic: str, context: str = "N/A"):
+        outline = self.write_outline(topic=topic, context=context).outline
 
         return dspy.Prediction(outline=outline)
 
@@ -159,6 +163,7 @@ class WritePageOutlineFromConv(dspy.Signature):
     """
 
     topic = dspy.InputField(prefix="The topic you want to write: ", format=str)
+    context = dspy.InputField(prefix="Additional focus / instructions from the user (may be 'N/A'): ", format=str)
     conv = dspy.InputField(prefix="Conversation history:\n", format=str)
     old_outline = dspy.OutputField(prefix="Current outline:\n", format=str)
     outline = dspy.OutputField(

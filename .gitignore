@@ -25,3 +25,5 @@ secrets.toml
 */assertion.log
 *results/
 .venv/
+results_ctx_test/
+results_noctx_test/

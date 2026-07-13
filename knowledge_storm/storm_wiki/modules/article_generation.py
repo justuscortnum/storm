@@ -31,7 +31,7 @@ class StormArticleGenerationModule(ArticleGenerationModule):
         self.section_gen = ConvToSection(engine=self.article_gen_lm)
 
     def generate_section(
-        self, topic, section_name, information_table, section_outline, section_query
+        self, topic, section_name, information_table, section_outline, section_query, context: str = ""
     ):
         collected_info: List[Information] = []
         if information_table is not None:
@@ -43,6 +43,7 @@ class StormArticleGenerationModule(ArticleGenerationModule):
             outline=section_outline,
             section=section_name,
             collected_info=collected_info,
+            context=context,
         )
         return {
             "section_name": section_name,
@@ -56,6 +57,7 @@ class StormArticleGenerationModule(ArticleGenerationModule):
         information_table: StormInformationTable,
         article_with_outline: StormArticle,
         callback_handler: BaseCallbackHandler = None,
+        context: str = "",
     ) -> StormArticle:
         """
         Generate article for the topic based on the information table and article outline.
@@ -85,6 +87,7 @@ class StormArticleGenerationModule(ArticleGenerationModule):
                 information_table=information_table,
                 section_outline="",
                 section_query=[topic],
+                context=context,
             )
             section_output_dict_collection = [section_output_dict]
         else:
@@ -116,6 +119,7 @@ class StormArticleGenerationModule(ArticleGenerationModule):
                             information_table,
                             section_outline,
                             section_query,
+                            context,
                         )
                     ] = section_title
 
@@ -142,7 +146,7 @@ class ConvToSection(dspy.Module):
         self.engine = engine
 
     def forward(
-        self, topic: str, outline: str, section: str, collected_info: List[Information]
+        self, topic: str, outline: str, section: str, collected_info: List[Information], context: str = ""
     ):
         info = ""
         for idx, storm_info in enumerate(collected_info):
@@ -153,7 +157,7 @@ class ConvToSection(dspy.Module):
 
         with dspy.settings.context(lm=self.engine):
             section = ArticleTextProcessing.clean_up_section(
-                self.write_section(topic=topic, info=info, section=section).output
+                self.write_section(topic=topic, info=info, section=section, context=context).output
             )
 
         return dspy.Prediction(section=section)
@@ -165,10 +169,12 @@ class WriteSection(dspy.Signature):
     Here is the format of your writing:
         1. Use "#" Title" to indicate section title, "##" Title" to indicate subsection title, "###" Title" to indicate subsubsection title, and so on.
         2. Use [1], [2], ..., [n] in line (for example, "The capital of the United States is Washington, D.C.[1][3]."). You DO NOT need to include a References or Sources section to list the sources at the end.
+        3. If additional focus or instructions from the user are provided (and not 'N/A'), prioritise the content and emphasis they ask for.
     """
 
     info = dspy.InputField(prefix="The collected information:\n", format=str)
     topic = dspy.InputField(prefix="The topic of the page: ", format=str)
+    context = dspy.InputField(prefix="Additional focus / instructions from the user (may be 'N/A'): ", format=str)
     section = dspy.InputField(prefix="The section you need to write: ", format=str)
     output = dspy.OutputField(
         prefix="Write the section with proper inline citations (Start your writing with # section title. Don't include the page title or try to write other sections):\n",

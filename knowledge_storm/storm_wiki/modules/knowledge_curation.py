@@ -50,6 +50,7 @@ class ConvSimulator(dspy.Module):
         persona: str,
         ground_truth_url: str,
         callback_handler: BaseCallbackHandler,
+        context: str = "",
     ):
         """
         topic: The topic to research.
@@ -59,7 +60,7 @@ class ConvSimulator(dspy.Module):
         dlg_history: List[DialogueTurn] = []
         for _ in range(self.max_turn):
             user_utterance = self.wiki_writer(
-                topic=topic, persona=persona, dialogue_turns=dlg_history
+                topic=topic, persona=persona, dialogue_turns=dlg_history, context=context
             ).question
             if user_utterance == "":
                 logging.error("Simulated Wikipedia writer utterance is empty.")
@@ -98,6 +99,7 @@ class WikiWriter(dspy.Module):
         persona: str,
         dialogue_turns: List[DialogueTurn],
         draft_page=None,
+        context: str = "",
     ):
         conv = []
         for turn in dialogue_turns[:-4]:
@@ -115,11 +117,11 @@ class WikiWriter(dspy.Module):
         with dspy.settings.context(lm=self.engine):
             if persona is not None and len(persona.strip()) > 0:
                 question = self.ask_question_with_persona(
-                    topic=topic, persona=persona, conv=conv
+                    topic=topic, persona=persona, conv=conv, context=context
                 ).question
             else:
                 question = self.ask_question(
-                    topic=topic, persona=persona, conv=conv
+                    topic=topic, persona=persona, conv=conv, context=context
                 ).question
 
         return dspy.Prediction(question=question)
@@ -132,6 +134,7 @@ class AskQuestion(dspy.Signature):
     """
 
     topic = dspy.InputField(prefix="Topic you want to write: ", format=str)
+    context = dspy.InputField(prefix="Additional focus / instructions from the user (may be 'N/A'): ", format=str)
     conv = dspy.InputField(prefix="Conversation history:\n", format=str)
     question = dspy.OutputField(format=str)
 
@@ -141,12 +144,14 @@ class AskQuestionWithPersona(dspy.Signature):
     Now, you are chatting with an expert to get information. Ask good questions to get more useful information.
     When you have no more question to ask, say "Thank you so much for your help!" to end the conversation.
     Please only ask a question at a time and don't ask what you have asked before. Your questions should be related to the topic you want to write.
+    If additional focus or instructions from the user are provided below (and not 'N/A'), let them guide which aspects you dig into.
     """
 
     topic = dspy.InputField(prefix="Topic you want to write: ", format=str)
     persona = dspy.InputField(
         prefix="Your persona besides being a Wikipedia writer: ", format=str
     )
+    context = dspy.InputField(prefix="Additional focus / instructions from the user (may be 'N/A'): ", format=str)
     conv = dspy.InputField(prefix="Conversation history:\n", format=str)
     question = dspy.OutputField(format=str)
 
@@ -278,9 +283,9 @@ class StormKnowledgeCurationModule(KnowledgeCurationModule):
             max_turn=max_conv_turn,
         )
 
-    def _get_considered_personas(self, topic: str, max_num_persona) -> List[str]:
+    def _get_considered_personas(self, topic: str, max_num_persona, context: str = "") -> List[str]:
         return self.persona_generator.generate_persona(
-            topic=topic, max_num_persona=max_num_persona
+            topic=topic, max_num_persona=max_num_persona, context=context
         )
 
     def _run_conversation(
@@ -290,6 +295,7 @@ class StormKnowledgeCurationModule(KnowledgeCurationModule):
         ground_truth_url,
         considered_personas,
         callback_handler: BaseCallbackHandler,
+        context: str = "",
     ) -> List[Tuple[str, List[DialogueTurn]]]:
         """
         Executes multiple conversation simulations concurrently, each with a different persona,
@@ -320,6 +326,7 @@ class StormKnowledgeCurationModule(KnowledgeCurationModule):
                 ground_truth_url=ground_truth_url,
                 persona=persona,
                 callback_handler=callback_handler,
+                context=context,
             )
 
         max_workers = min(self.max_thread_num, len(considered_personas))
@@ -349,6 +356,7 @@ class StormKnowledgeCurationModule(KnowledgeCurationModule):
         topic: str,
         ground_truth_url: str,
         callback_handler: BaseCallbackHandler,
+        context: str = "",
         max_perspective: int = 0,
         disable_perspective: bool = True,
         return_conversation_log=False,
@@ -370,7 +378,7 @@ class StormKnowledgeCurationModule(KnowledgeCurationModule):
             considered_personas = [""]
         else:
             considered_personas = self._get_considered_personas(
-                topic=topic, max_num_persona=max_perspective
+                topic=topic, max_num_persona=max_perspective, context=context
             )
         callback_handler.on_identify_perspective_end(perspectives=considered_personas)
 
@@ -382,6 +390,7 @@ class StormKnowledgeCurationModule(KnowledgeCurationModule):
             ground_truth_url=ground_truth_url,
             considered_personas=considered_personas,
             callback_handler=callback_handler,
+            context=context,
         )
 
         information_table = StormInformationTable(conversations)

@@ -5,7 +5,7 @@ Prerequisites:
   - pip install -r requirements.txt (in the active venv)
 
 Example:
-  python run_storm_gwdg.py --output-dir ./results --retriever tavily \
+  python -X utf8 run_storm_gwdg.py --output-dir ./results --retriever tavily \
       --context "Focus on evaluation metrics" \
       --do-research --do-generate-outline --do-generate-article --do-polish-article
 """
@@ -76,6 +76,33 @@ def _patched_get_wiki_page_title_and_toc(url):
 _persona_generator.get_wiki_page_title_and_toc = _patched_get_wiki_page_title_and_toc
 
 
+class RobustLitellmModel(LitellmModel):
+    """LitellmModel that tolerates transient empty/None completions.
+
+    GWDG/SAIA models occasionally return an empty (content=None) completion,
+    especially at the outline stage. A raw None propagates into dspy's
+    template.extract -> raw_pred.strip() and aborts the whole run
+    ('NoneType' object has no attribute 'strip'). This wrapper re-queries the
+    model a few times (temperature > 0 makes each retry a fresh sample) and
+    drops None/empty results, so a single bad completion no longer kills a run.
+    """
+
+    _MAX_RETRIES = 4
+
+    def __call__(self, *args, **kwargs):
+        for _ in range(self._MAX_RETRIES):
+            out = super().__call__(*args, **kwargs)
+            if isinstance(out, list):
+                cleaned = [c for c in out if c is not None and str(c).strip()]
+                if cleaned:
+                    return cleaned
+            elif out is not None and str(out).strip():
+                return out
+        # All retries came back empty: return a harmless placeholder so the
+        # downstream .strip() cannot crash. The run continues instead of dying.
+        return [" "]
+
+
 def is_valid_source(url: str) -> bool:
     u = (url or "").lower()
     return not any(d in u for d in DENY_DOMAINS)
@@ -102,11 +129,11 @@ def build_runner(args):
     }
 
     lm_configs = STORMWikiLMConfigs()
-    lm_configs.set_conv_simulator_lm(LitellmModel(model=FAST_MODEL, max_tokens=2000, **gwdg_kwargs))
-    lm_configs.set_question_asker_lm(LitellmModel(model=FAST_MODEL, max_tokens=2000, **gwdg_kwargs))
-    lm_configs.set_outline_gen_lm(LitellmModel(model=STRONG_MODEL, max_tokens=700, **gwdg_kwargs))
-    lm_configs.set_article_gen_lm(LitellmModel(model=STRONG_MODEL, max_tokens=1500, **gwdg_kwargs))
-    lm_configs.set_article_polish_lm(LitellmModel(model=STRONG_MODEL, max_tokens=4000, **gwdg_kwargs))
+    lm_configs.set_conv_simulator_lm(RobustLitellmModel(model=FAST_MODEL, max_tokens=2000, **gwdg_kwargs))
+    lm_configs.set_question_asker_lm(RobustLitellmModel(model=FAST_MODEL, max_tokens=2000, **gwdg_kwargs))
+    lm_configs.set_outline_gen_lm(RobustLitellmModel(model=STRONG_MODEL, max_tokens=1200, **gwdg_kwargs))
+    lm_configs.set_article_gen_lm(RobustLitellmModel(model=STRONG_MODEL, max_tokens=1500, **gwdg_kwargs))
+    lm_configs.set_article_polish_lm(RobustLitellmModel(model=STRONG_MODEL, max_tokens=4000, **gwdg_kwargs))
 
     engine_args = STORMWikiRunnerArguments(
         output_dir=args.output_dir,
@@ -183,7 +210,6 @@ if __name__ == "__main__":
     parser.add_argument("--max-conv-turn", type=int, default=4)
     parser.add_argument("--max-perspective", type=int, default=4)
     parser.add_argument("--search-top-k", type=int, default=5)
-    parser.add_argument("--retrieve-top-k", type=int, default=3)
     parser.add_argument("--do-research", action="store_true")
     parser.add_argument("--do-generate-outline", action="store_true")
     parser.add_argument("--do-generate-article", action="store_true")

@@ -11,6 +11,24 @@ from ...interface import Information, InformationTable, Article, ArticleSectionN
 from ...utils import ArticleTextProcessing, FileIOHelper
 
 
+# Source-authority boost for citation selection.
+# Snippets from these (primary / peer-reviewed) domains get a small similarity
+# bonus, so key papers already in the pool are preferred over blogs/secondary
+# pages when their relevance is comparable. Tune AUTHORITY_BOOST to taste.
+STRONG_DOMAINS = (
+    "arxiv.org", "aclanthology.org", "neurips.cc", "icml.cc", "openreview.net",
+    "proceedings.neurips.cc", "dl.acm.org", "semanticscholar.org",
+    "pmc.ncbi.nlm.nih.gov", "transformer-circuits.pub", 
+    "pair.withgoogle.com", "dspace.mit.edu", "cdn.openai.com",
+)
+AUTHORITY_BOOST = 0.10
+
+
+def _authority_boost(url: str) -> float:
+    u = (url or "").lower()
+    return AUTHORITY_BOOST if any(d in u for d in STRONG_DOMAINS) else 0.0
+
+
 class DialogueTurn:
     def __init__(
         self,
@@ -115,6 +133,9 @@ class StormInformationTable(InformationTable):
                 self.collected_urls.append(url)
                 self.collected_snippets.append(snippet)
         self.encoded_snippets = self.encoder.encode(self.collected_snippets)
+        self.snippet_authority_boost = np.array(
+            [_authority_boost(u) for u in self.collected_urls]
+        )
 
     def retrieve_information(
         self, queries: Union[List[str], str], search_top_k
@@ -126,6 +147,7 @@ class StormInformationTable(InformationTable):
         for query in queries:
             encoded_query = self.encoder.encode(query)
             sim = cosine_similarity([encoded_query], self.encoded_snippets)[0]
+            sim = sim + self.snippet_authority_boost  # prefer strong-domain sources
             sorted_indices = np.argsort(sim)
             for i in sorted_indices[-search_top_k:][::-1]:
                 selected_urls.append(self.collected_urls[i])

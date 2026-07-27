@@ -10,6 +10,7 @@ Example:
       --do-research --do-generate-outline --do-generate-article --do-polish-article
 """
 
+import json
 import os
 import re
 from argparse import ArgumentParser
@@ -178,6 +179,78 @@ def build_runner(args):
     return STORMWikiRunner(engine_args, lm_configs, rm)
 
 
+def resolve_run_dir(output_dir, topic):
+    """Locate the folder STORM wrote this run's files to."""
+    guess = os.path.join(output_dir, topic.replace(" ", "_").replace("/", "_"))
+    if os.path.exists(os.path.join(guess, "url_to_info.json")):
+        return guess
+    # Fallback: the newest subfolder that contains a url_to_info.json.
+    candidates = []
+    if os.path.isdir(output_dir):
+        for name in os.listdir(output_dir):
+            d = os.path.join(output_dir, name)
+            if os.path.isdir(d) and os.path.exists(os.path.join(d, "url_to_info.json")):
+                candidates.append((os.path.getmtime(d), d))
+    return max(candidates)[1] if candidates else guess
+
+
+def _append_references(art_path, index_to_source):
+    """Append a References section to the bottom of one article file, in place.
+
+    If the file already ends with a References section (e.g. from a previous
+    call), it is replaced rather than stacked, so re-runs stay clean.
+    """
+    if not os.path.exists(art_path):
+        return None
+    text = open(art_path, encoding="utf-8").read()
+    # Drop any existing References section before re-appending.
+    text = re.split(r"\n#\s+References\s*\n", text)[0].rstrip()
+    used = sorted(set(int(n) for n in re.findall(r"\[(\d+)\]", text)))
+    lines, missing = [], []
+    for n in used:
+        if n in index_to_source:
+            title, url = index_to_source[n]
+            lines.append(f"[{n}] {title}. {url}")
+        else:
+            missing.append(n)
+            lines.append(f"[{n}] (not found in url_to_info.json)")
+    out = text + "\n\n# References\n\n" + "\n".join(lines) + "\n"
+    with open(art_path, "w", encoding="utf-8") as f:
+        f.write(out)
+    return len(used), missing
+
+
+def write_references(run_dir):
+    """Append a References section to BOTH the unpolished and polished article, in place.
+
+    Deterministic: each [n] is resolved to its title+URL straight from
+    url_to_info.json, so nothing is invented. The numbering in url_to_info.json
+    matches the unpolished article exactly; for the polished article, any number
+    not present in the registry is flagged with a warning instead of guessed.
+    No extra file is created -- the reference list is written into each report.
+    """
+    u2i_path = os.path.join(run_dir, "url_to_info.json")
+    if not os.path.exists(u2i_path):
+        print("[refs] url_to_info.json missing; skipped.")
+        return
+
+    data = json.load(open(u2i_path, encoding="utf-8"))
+    url_to_index = data.get("url_to_unified_index", {})
+    url_to_info = data.get("url_to_info", {})
+    index_to_source = {}
+    for url, i in url_to_index.items():
+        title = (url_to_info.get(url, {}).get("title") or "").strip() or "(no title)"
+        index_to_source[int(i)] = (title, url)
+
+    for fname in ("storm_gen_article.txt", "storm_gen_article_polished.txt"):
+        res = _append_references(os.path.join(run_dir, fname), index_to_source)
+        if res is None:
+            continue
+        n, missing = res
+        note = f"  WARNING: {len(missing)} unresolved: {missing}" if missing else ""
+        print(f"[refs] {n} references appended to {fname}{note}")
+
+
 def main(args):
     runner = build_runner(args)
 
@@ -196,6 +269,7 @@ def main(args):
     )
     runner.post_run()
     runner.summary()
+    write_references(resolve_run_dir(args.output_dir, topic))
 
 
 if __name__ == "__main__":

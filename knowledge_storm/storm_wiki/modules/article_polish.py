@@ -54,10 +54,11 @@ class StormArticlePolishingModule(ArticlePolishingModule):
 
 
 class WriteLeadSection(dspy.Signature):
-    """Write a lead section for the given Wikipedia page with the following guidelines:
-    1. The lead should stand on its own as a concise overview of the article's topic. It should identify the topic, establish context, explain why the topic is notable, and summarize the most important points, including any prominent controversies.
-    2. The lead section should be concise and contain no more than four well-composed paragraphs.
-    3. The lead section should be carefully sourced as appropriate. Add inline citations (e.g., "Washington, D.C., is the capital of the United States.[1][3].") where necessary.
+    """Write a lead section that functions as a scholarly abstract for the given survey / review article, with the following guidelines:
+    1. The lead should stand on its own as a concise overview: state the scope of the review, summarise the main thematic threads and their key findings, note the practical significance of the topic, and acknowledge prominent open controversies or limitations.
+    2. Use a neutral, precise, academic register. Avoid promotional wording and hedge claims appropriately.
+    3. Keep it concise: no more than four well-composed paragraphs.
+    4. CITATIONS: You may ONLY reuse citation numbers [n] that already appear in the draft page below. Do NOT invent, add, or increment any citation numbers, and never cite a number that is not already present in the draft. If a claim in your summary has no matching citation in the draft, state it without a citation rather than making one up.
     """
 
     topic = dspy.InputField(prefix="The topic of the page: ", format=str)
@@ -66,7 +67,7 @@ class WriteLeadSection(dspy.Signature):
 
 
 class PolishPage(dspy.Signature):
-    """You are a faithful text editor that is good at finding repeated information in the article and deleting them to make sure there is no repetition in the article. You won't delete any non-repeated part in the article. You will keep the inline citations and article structure (indicated by "#", "##", etc.) appropriately. Do your job for the following article."""
+    """You are a faithful academic copy-editor. Your job is to find repeated or redundant information in the survey article and merge or delete it so that each point is made once, in the most appropriate section. You will NOT delete any non-repeated content, and you will NOT add new claims. Preserve every inline citation and the article structure (indicated by "#", "##", etc.) exactly. Keep the neutral, precise academic register. Do your job for the following article."""
 
     draft_page = dspy.InputField(prefix="The draft article:\n", format=str)
     page = dspy.OutputField(prefix="Your revised article:\n", format=str)

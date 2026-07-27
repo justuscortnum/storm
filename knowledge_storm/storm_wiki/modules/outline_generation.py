@@ -129,16 +129,21 @@ class WriteOutline(dspy.Module):
 
 
 class WritePageOutline(dspy.Signature):
-    """Write an outline for a Wikipedia page.
-    Here is the format of your writing:
-    1. Use "#" Title" to indicate section title, "##" Title" to indicate subsection title, "###" Title" to indicate subsubsection title, and so on.
-    2. Do not include other information.
-    3. Do not include topic name itself in the outline.
+    """Write the outline of an academic survey / literature review on the topic.
+    Follow the conventions of a scholarly review article, not a general-encyclopedia entry:
+    1. Open with an introduction section (scope of the review and why the topic matters).
+    2. Include a background / preliminaries section that defines the core concepts and terminology.
+    3. Organise the body as a coherent taxonomy of the field: group the literature by theme, approach, or method rather than listing individual works.
+    4. Include a dedicated section on open challenges and limitations of the current literature.
+    5. Include a section on future research directions.
+    Formatting:
+    6. Use "#" Title" for a section title, "##" Title" for a subsection, "###" Title" for a subsubsection, and so on.
+    7. Output only the outline. Do not include any other information and do not repeat the topic name as a heading.
     """
 
     topic = dspy.InputField(prefix="The topic you want to write: ", format=str)
     context = dspy.InputField(prefix="Additional focus / instructions from the user (may be 'N/A'): ", format=str)
-    outline = dspy.OutputField(prefix="Write the Wikipedia page outline:\n", format=str)
+    outline = dspy.OutputField(prefix="Write the survey outline:\n", format=str)
 
 
 class NaiveOutlineGen(dspy.Module):
@@ -155,11 +160,14 @@ class NaiveOutlineGen(dspy.Module):
 
 
 class WritePageOutlineFromConv(dspy.Signature):
-    """Improve an outline for a Wikipedia page. You already have a draft outline that covers the general information. Now you want to improve it based on the information learned from an information-seeking conversation to make it more informative.
-    Here is the format of your writing:
-    1. Use "#" Title" to indicate section title, "##" Title" to indicate subsection title, "###" Title" to indicate subsubsection title, and so on.
-    2. Do not include other information.
-    3. Do not include topic name itself in the outline.
+    """Improve the outline of an academic survey / literature review. You already have a draft outline that covers the general information. Now improve it using what was learned in an information-seeking conversation, so it becomes more informative and follows scholarly-review conventions.
+    The improved outline should:
+    1. Open with an introduction (scope and motivation) and a background / preliminaries section defining core concepts.
+    2. Organise the body as a coherent taxonomy of the field (group works by theme/approach/method, not one by one).
+    3. Include a dedicated section on open challenges and limitations, and a section on future research directions.
+    Formatting:
+    4. Use "#" Title" for a section title, "##" Title" for a subsection, "###" Title" for a subsubsection, and so on.
+    5. Output only the outline. Do not include other information and do not repeat the topic name as a heading.
     """
 
     topic = dspy.InputField(prefix="The topic you want to write: ", format=str)

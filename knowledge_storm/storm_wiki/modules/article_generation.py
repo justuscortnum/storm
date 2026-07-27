@@ -164,12 +164,16 @@ class ConvToSection(dspy.Module):
 
 
 class WriteSection(dspy.Signature):
-    """Write a Wikipedia section based on the collected information.
+    """Write one section of an academic survey / literature review based on the collected information.
 
-    Here is the format of your writing:
-        1. Use "#" Title" to indicate section title, "##" Title" to indicate subsection title, "###" Title" to indicate subsubsection title, and so on.
-        2. Use [1], [2], ..., [n] in line (for example, "The capital of the United States is Washington, D.C.[1][3]."). You DO NOT need to include a References or Sources section to list the sources at the end.
-        3. If additional focus or instructions from the user are provided (and not 'N/A'), prioritise the content and emphasis they ask for.
+    Adopt a scholarly register and the following guidelines:
+        1. Use "#" Title" for a section title, "##" Title" for a subsection, "###" Title" for a subsubsection, and so on.
+        2. Use inline citations [1], [2], ..., [n] (for example, "Sparse autoencoders recover monosemantic features[1][3]."). Do NOT include a separate References or Sources section.
+        3. Support every substantive claim with at least one citation. Do not state unsupported assertions.
+        4. When you introduce a cited work, briefly characterise its approach (e.g. the model, data, or evaluation used) so the reader understands how the finding was obtained.
+        5. Define technical terms at first use, and prefer primary / peer-reviewed sources over secondary summaries.
+        6. Use a neutral, precise, impersonal tone. Avoid promotional wording (e.g. "revolutionary", "powerful", "cutting-edge") and hedge claims appropriately ("evidence suggests", "X reported that ...").
+        7. If additional focus or instructions from the user are provided (and not 'N/A'), prioritise the content and emphasis they ask for.
     """
 
     info = dspy.InputField(prefix="The collected information:\n", format=str)

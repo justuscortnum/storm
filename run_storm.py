@@ -1,11 +1,11 @@
-"""Run the STORM Wiki pipeline with GWDG/SAIA models (OpenAI-compatible) and Tavily search.
+"""Run the STORM Wiki pipeline with any OpenAI-compatible LLM endpoint and Tavily search.
 
 Prerequisites:
-  - secrets.toml with GWDG_API_KEY and TAVILY_API_KEY
+  - secrets.toml with LLM_API_KEY and TAVILY_API_KEY
   - pip install -r requirements.txt (in the active venv)
 
 Example:
-  python -X utf8 run_storm_gwdg.py --output-dir ./results --retriever tavily \
+  python -X utf8 run_storm.py --output-dir ./results --retriever tavily \
       --context "Focus on evaluation metrics" \
       --do-research --do-generate-outline --do-generate-article --do-polish-article
 """
@@ -28,10 +28,11 @@ from knowledge_storm.rm import TavilySearchRM, DuckDuckGoSearchRM
 from knowledge_storm.utils import load_api_key
 from knowledge_storm.storm_wiki.modules import persona_generator as _persona_generator
 
-# GWDG/SAIA endpoint and models. Use instruct (non-reasoning) models only.
-GWDG_API_BASE = "https://chat-ai.academiccloud.de/v1"
-FAST_MODEL = "openai/openai-gpt-oss-120b"
-STRONG_MODEL = "openai/openai-gpt-oss-120b"
+# LLM endpoint and models (any OpenAI-compatible API). Use instruct (non-reasoning) models only. Or Qwen 3.5/3.6 models.
+
+API_BASE = "https://chat-ai.academiccloud.de/v1"
+FAST_MODEL = "openai/gemma-4-31b-it"
+STRONG_MODEL = "openai/gemma-4-31b-it"
 
 # Domains excluded from search results (non-citable sources).
 DENY_DOMAINS = (
@@ -80,7 +81,7 @@ _persona_generator.get_wiki_page_title_and_toc = _patched_get_wiki_page_title_an
 class RobustLitellmModel(LitellmModel):
     """LitellmModel that tolerates transient empty/None completions.
 
-    GWDG/SAIA models occasionally return an empty (content=None) completion,
+    Some providers occasionally return an empty (content=None) completion,
     especially at the outline stage. A raw None propagates into dspy's
     template.extract -> raw_pred.strip() and aborts the whole run
     ('NoneType' object has no attribute 'strip'). This wrapper re-queries the
@@ -120,21 +121,29 @@ def sanitize_topic(topic: str) -> str:
 def build_runner(args):
     load_api_key(toml_file_path="secrets.toml")
 
-    gwdg_kwargs = {
-        "api_key": os.getenv("GWDG_API_KEY"),
-        "api_base": GWDG_API_BASE,
+    llm_kwargs = {
+        "api_key": os.getenv("LLM_API_KEY"),
+        "api_base": API_BASE,
         "temperature": 1.0,
         "top_p": 0.9,
-        "num_retries": 6,
+        "num_retries": 12,
         "timeout": 120,
     }
 
+    def make_lm(model, max_tokens):
+        """Build an LM, disabling thinking mode for models that default to it
+        (Qwen 3.5/3.6), which otherwise return empty content and crash STORM."""
+        kw = dict(llm_kwargs)
+        if any(t in model.lower() for t in ("qwen3.5", "qwen3.6")):
+            kw["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+        return RobustLitellmModel(model=model, max_tokens=max_tokens, **kw)
+
     lm_configs = STORMWikiLMConfigs()
-    lm_configs.set_conv_simulator_lm(RobustLitellmModel(model=FAST_MODEL, max_tokens=2000, **gwdg_kwargs))
-    lm_configs.set_question_asker_lm(RobustLitellmModel(model=FAST_MODEL, max_tokens=2000, **gwdg_kwargs))
-    lm_configs.set_outline_gen_lm(RobustLitellmModel(model=STRONG_MODEL, max_tokens=1200, **gwdg_kwargs))
-    lm_configs.set_article_gen_lm(RobustLitellmModel(model=STRONG_MODEL, max_tokens=1500, **gwdg_kwargs))
-    lm_configs.set_article_polish_lm(RobustLitellmModel(model=STRONG_MODEL, max_tokens=4000, **gwdg_kwargs))
+    lm_configs.set_conv_simulator_lm(make_lm(FAST_MODEL, 2500))
+    lm_configs.set_question_asker_lm(make_lm(FAST_MODEL, 2500))
+    lm_configs.set_outline_gen_lm(make_lm(STRONG_MODEL, 2500))
+    lm_configs.set_article_gen_lm(make_lm(STRONG_MODEL, 3000))
+    lm_configs.set_article_polish_lm(make_lm(STRONG_MODEL, 6000))
 
     engine_args = STORMWikiRunnerArguments(
         output_dir=args.output_dir,
@@ -280,7 +289,7 @@ if __name__ == "__main__":
     parser.add_argument("--context", type=str, default="",
                         help="Additional focus/instructions passed to STORM.")
     parser.add_argument("--max-thread-num", type=int, default=1,
-                        help="Keep at 1 to avoid GWDG rate limits.")
+                        help="Keep at 1 to avoid provider rate limits.")
     parser.add_argument("--max-conv-turn", type=int, default=4)
     parser.add_argument("--max-perspective", type=int, default=4)
     parser.add_argument("--search-top-k", type=int, default=5)
